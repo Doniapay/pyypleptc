@@ -1,0 +1,2 @@
+INSERT INTO `gateways` (`id`, `code`, `name`, `alias`, `image`, `status`, `gateway_parameters`, `supported_currencies`, `crypto`, `extra`, `description`, `input_form`, `created_at`, `updated_at`) VALUES
+(38, 222, 'Doniapay', 'Doniapay', '6850f53fcca541750136127.png', 1, '{\"api_key\":{\"title\":\"API Key\",\"global\":true,\"value\":\"jav3sEwqAg0pNSr1OgRNC3UYcGsZQk2lYCYO4PhaYVnKZuIkj2\"}}', '{\"BDT\":\"BDT\"}', 0, NULL, NULL, NULL, '2019-09-14 13:14:22', '2025-06-17 16:59:31');
