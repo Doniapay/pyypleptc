@@ -12,24 +12,36 @@ class ProcessController extends Controller
     {
         $donia = json_decode($deposit->gatewayCurrency()->gateway_parameter);
         $invoice_id = $deposit->trx;
+        $api_key = $donia->api_key;
 
-        $data = [
-            "success_url" => route('ipn.' . $deposit->gateway->alias) . "?inv=" . $invoice_id,
-            "cancel_url" => route(gatewayRedirectUrl()),
-            "metadata" => [
-                "cus_name" => $deposit->user->firstname,
-                "cus_email" => $deposit->user->email,
-                "trx" => $invoice_id
-            ],
-            "amount" => number_format($deposit->final_amo, 2, '.', '')
+        $raw_data = [
+            "dn_su"  => route('ipn.' . $deposit->gateway->alias) . "?inv=" . $invoice_id,
+            "dn_cu"  => route(gatewayRedirectUrl()),
+            "dn_wu"  => route('ipn.' . $deposit->gateway->alias) . "?inv=" . $invoice_id,
+            "dn_am"  => number_format($deposit->final_amo, 2, '.', ''),
+            "dn_cn"  => $deposit->user->firstname ?? 'Customer',
+            "dn_ce"  => $deposit->user->email ?? 'customer@email.com',
+            "dn_mt"  => json_encode([
+                "trx"   => $invoice_id,
+                "phone" => $deposit->user->mobile ?? ''
+            ]),
+            "dn_rt"  => "GET"
         ];
+
+        $payload   = base64_encode(json_encode($raw_data));
+        $signature = hash_hmac('sha256', $payload, $api_key);
 
         $headers = [
-            'donia-apikey: ' . $donia->api_key,
-            'Content-Type: application/json'
+            "X-Signature-Key: " . $api_key,
+            "donia-signature: " . $signature,
+            "Content-Type: application/json"
         ];
 
-        $response = self::curlPost('https://secure.doniapay.com/api/payment/create', $data, $headers);
+        $data = [
+            'dp_payload' => $payload
+        ];
+
+        $response = self::curlPost('https://api.doniapay.com/v2/order/synchronize/prepare', $data, $headers);
         $res = json_decode($response, true);
 
         if (isset($res['status']) && ($res['status'] === 'success' || $res['status'] == 1) && !empty($res['payment_url'])) {
@@ -50,22 +62,23 @@ class ProcessController extends Controller
         $deposit = Deposit::where('trx', $track)->orderBy('id', 'DESC')->firstOrFail();
 
         $donia = json_decode($deposit->gatewayCurrency()->gateway_parameter);
+        $api_key = $donia->api_key;
 
         $headers = [
-            'donia-apikey: ' . $donia->api_key,
-            'Content-Type: application/json'
+            "X-Signature-Key: " . $api_key,
+            "Content-Type: application/json"
         ];
 
-        $transactionId = request()->query('transactionId');
+        $transactionId = request()->query('transaction_id') ?? request()->query('transactionId');
 
         $data = [
             "transaction_id" => $transactionId
         ];
 
-        $response = self::curlPost('https://secure.doniapay.com/api/payment/verify', $data, $headers);
+        $response = self::curlPost('https://api.doniapay.com/v2/order/synchronize/confirm', $data, $headers);
         $res = json_decode($response, true);
 
-        if (isset($res['status']) && strtolower($res['status']) === 'completed') {
+        if (isset($res['status']) && (strtolower($res['status']) === 'completed' || strtolower($res['status']) === 'success' || $res['status'] == 1)) {
             PaymentController::userDataUpdate($deposit->trx);
             $notify[] = ['success', 'Transaction was successful.'];
             return redirect()->route(gatewayRedirectUrl(true))->withNotify($notify);
